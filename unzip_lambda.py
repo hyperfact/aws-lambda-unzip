@@ -1,6 +1,10 @@
 import os
 import tempfile
 import zipfile
+import logging
+
+logger = logging.getLogger()
+logger.setLevel("INFO")
 
 from concurrent import futures
 from io import BytesIO
@@ -20,6 +24,8 @@ def lambda_handler(event, context):
     bucket = event['s3']['bucket']['name']
     key = event['s3']['object']['key']
     path = os.path.dirname(key)
+
+    logger.info(f'>>> file: {path}')
 
     # Create temporary file
     temp_file = tempfile.mktemp()
@@ -47,6 +53,7 @@ def lambda_handler(event, context):
     # Remove extracted archive file
     s3.delete_object(Bucket=bucket, Key=key)
 
+    logger.info(f'<<< end: {path} ({len(future_list)})')
     return result
 
 
@@ -60,5 +67,7 @@ def extract(filename, path, zipdata, target_bucket):
         )
     except Exception:
         upload_status = 'fail'
+
+        logger.error(f'err: {path}/{filename}')
     finally:
         return filename, upload_status
