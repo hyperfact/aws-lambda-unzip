@@ -9,10 +9,13 @@ import boto3
 
 s3 = boto3.client('s3')
 
+# Environment
+# - target_bucket
+# - target_path_prefix
 
 def lambda_handler(event, context):
     # Parse and prepare required items from event
-    global bucket, path, zipdata
+    # global bucket, path, zipdata
     event = next(iter(event['Records']))
     bucket = event['s3']['bucket']['name']
     key = event['s3']['object']['key']
@@ -25,10 +28,14 @@ def lambda_handler(event, context):
     s3.download_file(bucket, key, temp_file)
     zipdata = zipfile.ZipFile(temp_file)
 
+    # Fetch environment
+    target_bucket = os.environ.get('target_bucket')
+    target_path_prefix = os.environ.get('target_path_prefix')
+
     # Call action method with using ThreadPool
     with futures.ThreadPoolExecutor(max_workers=4) as executor:
         future_list = [
-            executor.submit(extract, filename)
+            executor.submit(extract, filename, f'{target_path_prefix}/{path}', zipdata, target_bucket)
             for filename in zipdata.namelist()
         ]
 
@@ -43,12 +50,12 @@ def lambda_handler(event, context):
     return result
 
 
-def extract(filename):
+def extract(filename, path, zipdata, target_bucket):
     upload_status = 'success'
     try:
         s3.upload_fileobj(
             BytesIO(zipdata.read(filename)),
-            bucket,
+            target_bucket,
             os.path.join(path, filename)
         )
     except Exception:
