@@ -2,6 +2,7 @@ import os
 import tempfile
 import zipfile
 import logging
+import io
 
 logger = logging.getLogger()
 logger.setLevel("INFO")
@@ -27,6 +28,8 @@ def lambda_handler(event, context):
 
     logger.info(f'>>> file: {path}')
 
+    outputIO = io.StringIO()
+
     # Create temporary file
     temp_file = tempfile.mktemp()
 
@@ -50,8 +53,23 @@ def lambda_handler(event, context):
         filename, status = future.result()
         result[status].append(filename)
 
+        if status == 'fail':
+            print(f'fail:{filename}', file=outputIO)
+    
+    print(f'success:{len(result['success'])}, fail:{len(result['fail'])}', file=outputIO)
+
     # Remove extracted archive file
     s3.delete_object(Bucket=bucket, Key=key)
+
+    outputIO.flush()
+    output = outputIO.getvalue().encode()
+    logger.info(output)
+    basename = os.path.splitext(os.path.basename(key))[0]
+    s3.upload_fileobj(
+        BytesIO(output),
+        target_bucket,
+        os.path.join(target_path_prefix, path, f'{basename}.html')
+    )
 
     logger.info(f'<<< end: {path} ({len(future_list)})')
     return result
@@ -65,9 +83,9 @@ def extract(filename, path, zipdata, target_bucket):
             target_bucket,
             os.path.join(path, filename)
         )
-    except Exception:
+    except Exception as ex:
         upload_status = 'fail'
 
-        logger.error(f'err: {path}/{filename}')
+        logger.error(f'err: {path}/{filename} | {ex}')
     finally:
         return filename, upload_status
